@@ -1,9 +1,13 @@
 #include <Arduino.h>
 #include <Arduino_LSM9DS1.h>
+#include <MadgwickAHRS.h>
 
 const int ledPin = LED_BUILTIN;
 int blinkRate = 0;
 int currentState = -1;
+Madgwick madgwickFilter;
+float sensorRate = 0.00;
+unsigned long microsPerReading, microsPrevious;
 
 #define RED_PIN 22
 #define GREEN_PIN 23
@@ -88,10 +92,9 @@ void setup()
   pinMode(BLUE_PIN, OUTPUT);
   pinMode(GREEN_PIN, OUTPUT);
   powerOffAllLEDs();
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial.available())
     ; //wait until a byte was received
-
   if (!IMU.begin())
   {
     Serial.println("400:Failed to initialized IMU!");
@@ -99,28 +102,53 @@ void setup()
     while (1)
       ;
   }
+  sensorRate = IMU.accelerationSampleRate();
+  madgwickFilter.begin(sensorRate);
+}
+
+float normalize_a(float ax)
+{
+  return ax * 4.0 / 8.0;
+}
+
+float normalize_g(float gx)
+{
+  return gx * 2000 / 4000;
 }
 
 void loop()
 {
-  float ax, ay, az, gx, gy, gz;
+  float ax, ay, az, gx, gy, gz, mx, my, mz;
+  float yaw, pitch, roll;
+  float norm_ax, norm_ay, norm_az, norm_gx, norm_gy, norm_gz;
+
   int accelAvail = IMU.accelerationAvailable();
   int gyroAvail = IMU.gyroscopeAvailable();
-  if (accelAvail && currentState == START)
-  {
-    IMU.readAcceleration(ax, ay, az);
-  }
-
-  if (gyroAvail && currentState == START)
-  {
-    IMU.readGyroscope(gx, gy, gz);
-  }
 
   if (accelAvail && gyroAvail && currentState == START)
   {
-    String accData = "100:" + String(ax, 6) + ',' + String(ay, 6) + ',' + String(az, 6) + ',' + String(gx, 6) + ',' + String(gy, 6) + ',' + String(gz, 6) + '\n';
+    IMU.readAcceleration(ax, ay, az);
+    IMU.readGyroscope(gx, gy, gz);
+    // IMU.readMagneticField(mx, my, mz);
+    norm_ax = normalize_a(ax);
+    norm_ay = normalize_a(ay);
+    norm_az = normalize_a(az);
+    norm_gx = normalize_g(gx);
+    norm_gy = normalize_g(gy);
+    norm_gz = normalize_g(gz);
+
+    String accData = "100:" +
+                     String(norm_ax, 6) + ',' + String(norm_ay, 6) + ',' + String(norm_az, 6) + ',' +
+                     String(norm_gx, 6) + ',' + String(norm_gy, 6) + ',' + String(norm_gz, 6) + ',';
+    madgwickFilter.updateIMU(gx, gy, gz, ax, ay, az);
+    
+    yaw = madgwickFilter.getYawRadians();
+    pitch = madgwickFilter.getPitchRadians();
+    roll = madgwickFilter.getRollRadians();
+
+    accData +=
+        String(yaw, 6) + ',' + String(pitch, 6) + ',' + String(roll, 6) + '\n';
     Serial.write(accData.c_str());
-    delay(20);
   }
 
   if (Serial.available() > 0)
