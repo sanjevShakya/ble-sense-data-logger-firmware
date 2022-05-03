@@ -16,6 +16,7 @@ unsigned long microsPerReading, microsPrevious;
 #define INIT 1
 #define START 2
 #define STOP 3
+#define INFERENCE 4
 #define ACC_DATA 100
 #define ERROR_ACC_INT 400
 
@@ -52,6 +53,13 @@ void turn_blue_led()
   toggle_LED(BLUE_PIN, LOW);
 }
 
+void turn_white_led()
+{
+  toggle_LED(RED_PIN, LOW);
+  toggle_LED(GREEN_PIN, LOW);
+  toggle_LED(BLUE_PIN, LOW);
+}
+
 void start_recording()
 {
   turn_red_led();
@@ -65,6 +73,11 @@ void stop_recording()
 void init_recording()
 {
   turn_blue_led();
+}
+
+void start_inferencing()
+{
+  turn_white_led();
 }
 
 String getValue(String data, char separator, int index)
@@ -94,7 +107,7 @@ void setup()
   powerOffAllLEDs();
   Serial.begin(115200);
   while (!Serial.available())
-    ; //wait until a byte was received
+    ; // wait until a byte was received
   if (!IMU.begin())
   {
     Serial.println("400:Failed to initialized IMU!");
@@ -118,14 +131,14 @@ float normalize_g(float gx)
 
 void loop()
 {
-  float ax, ay, az, gx, gy, gz, mx, my, mz;
+  float ax, ay, az, gx, gy, gz;
   float yaw, pitch, roll;
   float norm_ax, norm_ay, norm_az, norm_gx, norm_gy, norm_gz;
 
   int accelAvail = IMU.accelerationAvailable();
   int gyroAvail = IMU.gyroscopeAvailable();
 
-  if (accelAvail && gyroAvail && currentState == START)
+  if (accelAvail && gyroAvail && (currentState == START || currentState == INFERENCE))
   {
     IMU.readAcceleration(ax, ay, az);
     IMU.readGyroscope(gx, gy, gz);
@@ -136,12 +149,22 @@ void loop()
     norm_gx = normalize_g(gx);
     norm_gy = normalize_g(gy);
     norm_gz = normalize_g(gz);
+    String actionHeader = "";
+    switch (currentState)
+    {
+    case START:
+      actionHeader = "100:";
+      break;
+    case INFERENCE:
+      actionHeader = "900:";
+      break;
+    }
 
-    String accData = "100:" +
+    String accData = actionHeader +
                      String(norm_ax, 6) + ',' + String(norm_ay, 6) + ',' + String(norm_az, 6) + ',' +
                      String(norm_gx, 6) + ',' + String(norm_gy, 6) + ',' + String(norm_gz, 6) + ',';
     madgwickFilter.updateIMU(gx, gy, gz, ax, ay, az);
-    
+
     yaw = madgwickFilter.getYawRadians();
     pitch = madgwickFilter.getPitchRadians();
     roll = madgwickFilter.getRollRadians();
@@ -153,8 +176,6 @@ void loop()
 
   if (Serial.available() > 0)
   {
-    // Data format defined as <action>:<payload> where action is set of integers
-    // defined in actions.h and payload can be any sort of csv separated data
     String data = Serial.readStringUntil('\n');
     Serial.print("received by arduino " + data);
 
@@ -175,6 +196,10 @@ void loop()
       case INIT:
         init_recording();
         currentState = INIT;
+        break;
+      case INFERENCE:
+        start_inferencing();
+        currentState = INFERENCE;
         break;
       }
     }
