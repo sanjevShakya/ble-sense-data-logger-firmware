@@ -19,5 +19,11 @@ nuances of the signals produced by the accelerometer.
 
 ![image](https://user-images.githubusercontent.com/9900412/174103510-b598eb81-fcec-43a7-9824-11157b9bba98.png)
 
+### Project Setup Guide
+
+1. git clone <project>
+2. Open the project using PlatformIO extension installed using VScode
+3. Install all dependencies and Burn the Firmware to Arduino BLE Sense 33 board
+
 
 
